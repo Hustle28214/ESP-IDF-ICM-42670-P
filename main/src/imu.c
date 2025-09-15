@@ -292,7 +292,7 @@ esp_err_t imu_gyro_set_sampling_rate(double rate_hz){
     return ret;
 }
 
-esp_err_t imu_intr_config(){
+esp_err_t imu_intr_config(void){
     // 我使用的硬件默认不连接中断引脚，暂缓更新
     return ESP_OK;
 }

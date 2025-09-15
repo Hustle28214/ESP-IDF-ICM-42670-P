@@ -210,5 +210,12 @@ esp_err_t imu_get_acce_data(imu_acce_data_t *acce_val);
 esp_err_t imu_get_gyro_data(imu_gyro_data_t *gyro_val);
 esp_err_t imu_get_temp_data(float *const temp);
 esp_err_t imu_comp_filter(imu_acce_data_t *const acce_val,imu_gyro_data_t *const gyro_val,imu_comp_angle_t *const comp_angle);
+esp_err_t imu_wake_up(void);
+esp_err_t imu_sleep(void);
+esp_err_t imu_who_am_i(void);
+esp_err_t imu_acce_set_sampling_rate(double rate_hz);
+esp_err_t imu_gyro_set_sampling_rate(double rate_hz);
+esp_err_t imu_intr_config(void);
+
 
 #endif
