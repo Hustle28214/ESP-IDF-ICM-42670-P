@@ -3,18 +3,22 @@
 #include "driver/i2c_master.h"
 #include "esp_mac.h"
 #include <stdint.h>
+#include <math.h>
 #include <stdio.h>
+#include "rtc.h"
+#include <time.h>
+#include <sys/time.h>
 // SCL:IO19
 // SDA:IO18
 // Address:0x69(AD0=1) 0x68(AD0=0)
 // 通过AD0引脚选择地址。默认接上拉10K电阻，电平逻辑置1
 #define _PI 3.1415926535f
 #define _RAD2DEG 57.2957795130f
-
+#define _ALPHA 0.98f
 i2c_master_bus_handle_t mst_bus_handle;
 i2c_master_dev_handle_t dev_handle;
 
-void imu_i2c_init(){
+void imu_i2c_init(void){
     // 用新的i2c_master.h库初始化I2C主机
     i2c_master_bus_handle_t mst_bus_handle;
     i2c_master_bus_config_t master_conf ={
@@ -38,7 +42,7 @@ void imu_i2c_init(){
     ESP_ERROR_CHECK(i2c_master_bus_add_device(mst_bus_handle,&dev_cfg,&dev_handle));
 }
 
-void imu_i2c_deinit(){
+void imu_i2c_deinit(void){
     if (dev_handle) {
         i2c_master_bus_rm_device(dev_handle);
         dev_handle = NULL;
@@ -174,3 +178,121 @@ esp_err_t imu_get_temp_data(float *const temp){
     return ret;
 }
 
+esp_err_t imu_comp_filter(imu_acce_data_t *const acce_val,imu_gyro_data_t *const gyro_val,imu_comp_angle_t *const comp_angle){
+    float acce_angle[2]= {0.0f,0.0f};
+    float gyro_angle[2]= {0.0f,0.0f};
+    float comp_angle_prev[2] = {0.0f, 0.0f};
+    acce_angle[0] = atan2(acce_val->acce_y,acce_val->acce_z) * _RAD2DEG;
+    acce_angle[1] = atan2(acce_val->acce_x,acce_val->acce_z) * _RAD2DEG;
+    static uint64_t last_time_us = 0;
+    uint64_t current_time_us = esp_rtc_get_time_us();
+    if(last_time_us==0){
+        last_time_us = current_time_us;
+        comp_angle->roll_angle = acce_angle[0];
+        comp_angle->pitch_angle = acce_angle[1];
+        return ESP_OK;
+    }
+    float _dt = (float)(float)(current_time_us - last_time_us) / 1000000.0f;
+
+    gyro_angle[0] = gyro_val->gyro_x * _dt;
+    gyro_angle[1] = gyro_val->gyro_y * _dt;
+
+    comp_angle->roll_angle = _ALPHA * (comp_angle_prev[0] + gyro_angle[0]) + (1 - _ALPHA) * acce_angle[0];
+    comp_angle->pitch_angle = _ALPHA * (comp_angle_prev[1] + gyro_angle[1]) + (1 - _ALPHA) * acce_angle[1];
+
+    return ESP_OK;
+}
+
+esp_err_t imu_wake_up(void){
+    // ACCEL工作在LP模式下
+    esp_err_t ret;
+    uint8_t mode;
+    ret=imu_reg_read(dev_handle,IMU_PWR_MGMT0,&mode,1);
+    if(ESP_OK != ret)
+    {
+        return ret;
+    }
+    mode = (mode & 0xF0) | 0x06; // 设置ACCEL工作在LP模式下，GYRO工作在standby模式下
+    ret=imu_reg_write(dev_handle,IMU_PWR_MGMT0,&mode,1);
+    return ret;
+    
+}
+
+esp_err_t imu_sleep(void){
+    esp_err_t ret;
+    uint8_t mode;
+    ret=imu_reg_read(dev_handle,IMU_PWR_MGMT0,&mode,1);
+    if(ESP_OK != ret)
+    {
+        return ret;
+    }
+    mode = (mode & 0xF0) | 0x01; // 设置ACCEL和GYRO都关闭
+    ret=imu_reg_write(dev_handle,IMU_PWR_MGMT0,&mode,1);
+    return ret;
+}
+
+esp_err_t imu_who_am_i(void){
+    esp_err_t ret;
+    uint8_t who_am_i;
+    ret=imu_reg_read(dev_handle,IMU_WHO_AM_I,&who_am_i,1);
+    if(ESP_OK != ret)
+    {
+        return ret;
+    }    
+}
+
+esp_err_t imu_acce_set_sampling_rate(double rate_hz){
+    esp_err_t ret;
+    uint8_t rate;
+    ret=imu_reg_read(dev_handle,IMU_ACCEL_CONFIG1,&rate,1);
+    if(ESP_OK != ret)
+    {
+        return ret;
+    }
+    int rate_int = (int)(rate_hz*10000);
+    switch(rate_int){
+        case 16000000: rate = (rate & 0xF0) | (ACCEL_ODR_1600HZ); break;
+        case 8000000: rate = (rate & 0xF0) | (ACCEL_ODR_800HZ); break;
+        case 4000000: rate = (rate & 0xF0) | (ACCEL_ODR_400HZ); break;
+        case 2000000: rate = (rate & 0xF0) | (ACCEL_ODR_200HZ); break;
+        case 1000000: rate = (rate & 0xF0) | (ACCEL_ODR_100HZ); break;
+        case 500000: rate = (rate & 0xF0) | (ACCEL_ODR_50HZ); break;
+        case 250000: rate = (rate & 0xF0) | (ACCEL_ODR_25HZ); break;
+        case 125000: rate = (rate & 0xF0) | (ACCEL_ODR_12_5HZ); break;
+        case 62500: rate = (rate & 0xF0) | (ACCEL_ODR_6_25HZ); break;
+        case 31250: rate = (rate & 0xF0) | (ACCEL_ODR_3_125HZ); break;
+        case 15625: rate = (rate & 0xF0) | (ACCEL_ODR_1_5625HZ); break;
+        default: return ESP_ERR_INVALID_ARG;break;
+    }
+    ret = imu_reg_write(dev_handle,IMU_ACCEL_CONFIG1,&rate,1);
+    return ret;
+}
+
+esp_err_t imu_gyro_set_sampling_rate(double rate_hz){
+    esp_err_t ret;
+    uint8_t rate;
+    ret=imu_reg_read(dev_handle,IMU_GYRO_CONFIG1,&rate,1);
+    if(ESP_OK != ret)
+    {
+        return ret;
+    }
+    int rate_int = (int)(rate_hz*10000);
+    switch(rate_int){
+        case 16000000: rate = (rate & 0xF0) | (GYRO_ODR_1600HZ); break;
+        case 8000000: rate = (rate & 0xF0) | (GYRO_ODR_800HZ); break;
+        case 4000000: rate = (rate & 0xF0) | (GYRO_ODR_400HZ); break;
+        case 2000000: rate = (rate & 0xF0) | (GYRO_ODR_200HZ); break;
+        case 1000000: rate = (rate & 0xF0) | (GYRO_ODR_100HZ); break;
+        case 500000: rate = (rate & 0xF0) | (GYRO_ODR_50HZ); break;
+        case 250000: rate = (rate & 0xF0) | (GYRO_ODR_25HZ); break;
+        case 125000: rate = (rate & 0xF0) | (GYRO_ODR_12_5HZ); break;
+        default: return ESP_ERR_INVALID_ARG;break;
+    }
+    ret = imu_reg_write(dev_handle,IMU_GYRO_CONFIG1,&rate,1);
+    return ret;
+}
+
+esp_err_t imu_intr_config(){
+    // 我使用的硬件默认不连接中断引脚，暂缓更新
+    return ESP_OK;
+}

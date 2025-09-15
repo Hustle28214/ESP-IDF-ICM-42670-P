@@ -78,6 +78,11 @@ typedef enum{
 }imu_reg_bank0_map_t;
 
 typedef struct{
+    gpio_num_t int_gpio;
+    
+}imu_intr_config_t;
+
+typedef struct{
     int16_t acce_raw_x;
     int16_t acce_raw_y;
     int16_t acce_raw_z;
@@ -115,6 +120,18 @@ typedef enum{
     GYRO_UI_FS_SEL_500DPS =0x02,
     GYRO_UI_FS_SEL_250DPS =0x03,
 }GYRO_UI_FS_SEL;
+
+typedef enum{
+    GYRO_ODR_1600HZ = 0x05,
+    GYRO_ODR_800HZ = 0x06,
+    GYRO_ODR_400HZ = 0x07,
+    GYRO_ODR_200HZ = 0x08,
+    GYRO_ODR_100HZ = 0x09,
+    GYRO_ODR_50HZ = 0x0A,
+    GYRO_ODR_25HZ = 0x0B,
+    GYRO_ODR_12_5HZ = 0x0C,
+}GYRO_ODR;
+
 
 typedef enum{
     // Reserved： 0x00-0x04
@@ -172,5 +189,26 @@ typedef enum{
     ACCEL_UI_FILT_BW_16HZ = 0x07}
     ACCEL_UI_FILT_BW;
 
+
+typedef struct{
+    float pitch_angle;
+    float roll_angle;
+    float yaw_angle;
+}imu_comp_angle_t;
+
+
+
+void imu_i2c_init(void);
+void imu_i2c_deinit(void);
+static esp_err_t imu_reg_write(imu_handle_t imu_handle,uint8_t reg_addr,uint8_t const *data,const uint8_t len);
+static esp_err_t imu_reg_read(imu_handle_t imu_handle,uint8_t reg_addr,uint8_t const *data,const uint8_t len);
+esp_err_t imu_get_acce_sensitivity(float *const acce_sensitivity);
+esp_err_t imu_get_gyro_sensitivity(float *const gyro_sensitivity);
+esp_err_t imu_get_raw_acce_data(imu_acce_raw_data_t *raw_acce_val);
+esp_err_t imu_get_raw_gyro_data(imu_gyro_raw_data_t *raw_gyro_val);
+esp_err_t imu_get_acce_data(imu_acce_data_t *acce_val);
+esp_err_t imu_get_gyro_data(imu_gyro_data_t *gyro_val);
+esp_err_t imu_get_temp_data(float *const temp);
+esp_err_t imu_comp_filter(imu_acce_data_t *const acce_val,imu_gyro_data_t *const gyro_val,imu_comp_angle_t *const comp_angle);
 
 #endif
