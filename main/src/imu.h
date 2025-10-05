@@ -1,7 +1,7 @@
 #ifndef __IMU_H__
 #define __IMU_H__
 #include <driver/gpio.h>
-#include <driver/i2c.h>
+#include <driver/i2c_master.h>
 
 #define IMU_I2C_ADDR              0x69                // IMU I2C address
 #define I2C_MASTER_FREQ_HZ          1000000             // I2C master clock frequency
@@ -11,7 +11,13 @@
 
 typedef void *imu_handle_t;
 extern i2c_master_bus_handle_t mst_bus_handle;
+// 在extern声明后添加
+extern i2c_master_dev_handle_t dev_handle;
 
+// 添加测试函数声明
+
+esp_err_t imu_debug_raw_data(void) ;
+esp_err_t imu_debug_registers(void);
 typedef enum{
     IMU_MCLK_RDY = 0x00,
     IMU_DEVICE_CONFIG = 0x01,
@@ -196,12 +202,22 @@ typedef struct{
     float yaw_angle;
 }imu_comp_angle_t;
 
+typedef struct {
+    float Q_angle;   // 过程噪声协方差 - 角度
+    float Q_gyro;    // 过程噪声协方差 - 角速度  
+    float R_angle;   // 测量噪声协方差
+    float x_angle;   // 状态向量 - 角度
+    float x_bias;    // 状态向量 - 角速度偏差
+    float P[2][2];   // 误差协方差矩阵
+    float K[2];      // 卡尔曼增益
+    float y;         // 残差
+    float S;         // 估计误差协方差
+} KalmanFilter;
 
-
-void imu_i2c_init(void);
+esp_err_t imu_i2c_init(void);
 void imu_i2c_deinit(void);
-static esp_err_t imu_reg_write(imu_handle_t imu_handle,uint8_t reg_addr,uint8_t const *data,const uint8_t len);
-static esp_err_t imu_reg_read(imu_handle_t imu_handle,uint8_t reg_addr,uint8_t const *data,const uint8_t len);
+extern esp_err_t imu_reg_write(imu_handle_t imu_handle,uint8_t reg_addr,uint8_t const *data,const uint8_t len);
+extern esp_err_t imu_reg_read(imu_handle_t imu_handle,uint8_t reg_addr,uint8_t *data,const uint8_t len);
 esp_err_t imu_get_acce_sensitivity(float *const acce_sensitivity);
 esp_err_t imu_get_gyro_sensitivity(float *const gyro_sensitivity);
 esp_err_t imu_get_raw_acce_data(imu_acce_raw_data_t *raw_acce_val);
@@ -216,6 +232,8 @@ esp_err_t imu_who_am_i(void);
 esp_err_t imu_acce_set_sampling_rate(double rate_hz);
 esp_err_t imu_gyro_set_sampling_rate(double rate_hz);
 esp_err_t imu_intr_config(void);
-
+void kalman_init(KalmanFilter* kf, float Q_angle, float Q_gyro, float R_angle);
+float kalman_update(KalmanFilter* kf, float angle_m, float gyro_m, float dt);
+esp_err_t imu_get_all_data(imu_acce_data_t *acce_val, imu_gyro_data_t *gyro_val, float *temp);
 
 #endif

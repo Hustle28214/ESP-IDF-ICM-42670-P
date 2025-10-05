@@ -83,6 +83,7 @@
         "thread": "c",
         "cinttypes": "c",
         "utility": "c",
-        "rtc.h": "c"
+        "rtc.h": "c",
+        "esp_err.h": "c"
     }
 }
